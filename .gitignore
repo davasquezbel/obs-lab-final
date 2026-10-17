@@ -1,0 +1,17 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
+
+# Secretos locales
+.env
+*.key.json
+k8s/secrets/
+
+# Python / SO
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
