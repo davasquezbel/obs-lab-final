@@ -1,0 +1,28 @@
+# Construye y publica las 3 imágenes en Artifact Registry.
+# Uso: gcloud builds submit services --config services/cloudbuild.yaml --substitutions=_TAG=1.0.0
+substitutions:
+  _REGISTRY: us-central1-docker.pkg.dev/${PROJECT_ID}/obs-lab
+  _TAG: "1.0.0"
+
+steps:
+  - id: service-a
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "--build-arg", "SERVICE=service-a", "-t", "${_REGISTRY}/service-a:${_TAG}", "."]
+    waitFor: ["-"]
+  - id: service-b
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "--build-arg", "SERVICE=service-b", "-t", "${_REGISTRY}/service-b:${_TAG}", "."]
+    waitFor: ["-"]
+  - id: data-service
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "--build-arg", "SERVICE=data-service", "-t", "${_REGISTRY}/data-service:${_TAG}", "."]
+    waitFor: ["-"]
+
+images:
+  - ${_REGISTRY}/service-a:${_TAG}
+  - ${_REGISTRY}/service-b:${_TAG}
+  - ${_REGISTRY}/data-service:${_TAG}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true

@@ -1,0 +1,90 @@
+# Generador de tráfico continuo (baseline para SLOs y detección de anomalías).
+# ~5 req/s hacia service-a: 90% consultas de pedidos (≈5% inexistentes → 404),
+# 10% logins (≈20% con clave errada → 401).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loadgen-script
+  namespace: otel-lab
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { sleep } from 'k6';
+
+    const BASE = __ENV.TARGET || 'http://service-a:8000';
+    const USER = __ENV.LOGIN_USER;
+    const PASS = __ENV.LOGIN_PASS;
+
+    export const options = {
+      discardResponseBodies: true,
+      scenarios: {
+        baseline: {
+          executor: 'constant-arrival-rate',
+          rate: Number(__ENV.RPS || 5),
+          timeUnit: '1s',
+          duration: '720h',
+          preAllocatedVUs: 20,
+          maxVUs: 100,
+        },
+      },
+    };
+
+    export default function () {
+      if (Math.random() < 0.10) {
+        const bad = Math.random() < 0.20;
+        http.post(`${BASE}/login`,
+          JSON.stringify({ username: USER, password: bad ? 'wrong-' + Math.random() : PASS }),
+          { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' } });
+      } else {
+        const id = 1 + Math.floor(Math.random() * 105);   // 101-105 no existen → 404
+        http.get(`${BASE}/order/${id}`, { tags: { name: 'order' } });
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: otel-lab
+  labels:
+    app: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "--quiet", "--no-summary", "/scripts/script.js"]
+          env:
+            - name: RPS
+              value: "5"
+            - name: LOGIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: auth-users
+                  key: LOGIN_USER
+            - name: LOGIN_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: auth-users
+                  key: LOGIN_PASS
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: loadgen-script

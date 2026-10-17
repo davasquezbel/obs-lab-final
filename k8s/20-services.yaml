@@ -1,0 +1,253 @@
+# Los tres microservicios. Secrets requeridos (los crea scripts/deploy.sh):
+#   db-credentials (DB_PASSWORD) y auth-users (AUTH_USERS)
+# ─────────────────────────── data-service ───────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-service
+  namespace: otel-lab
+  labels:
+    app: data-service
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-service
+  template:
+    metadata:
+      labels:
+        app: data-service
+        version: v1
+    spec:
+      serviceAccountName: data-service
+      initContainers:
+        # Sidecar nativo: arranca antes que la app y vive durante todo el pod
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
+          restartPolicy: Always
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "--auto-iam-authn=false"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "--telemetry-project=obs-lab-final"
+            - "--telemetry-prefix=cloudsqlproxy"
+            - "obs-lab-final:us-central1:obs-lab-pg"
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9090
+            periodSeconds: 1
+            failureThreshold: 60
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+      containers:
+        - name: data-service
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/data-service:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8002
+          envFrom:
+            - configMapRef:
+                name: otel-lab-config
+          env:
+            - name: PORT
+              value: "8002"
+            - name: DB_HOST
+              value: "127.0.0.1"
+            - name: DB_NAME
+              value: appdb
+            - name: DB_USER
+              value: app
+            - name: CLOUDSQL_INSTANCE
+              value: obs-lab-final:us-central1:obs-lab-pg
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASSWORD
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.namespace.name=otel-lab,k8s.pod.name=$(K8S_POD_NAME),k8s.container.name=data-service"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-service
+  namespace: otel-lab
+  labels:
+    app: data-service
+spec:
+  selector:
+    app: data-service
+  ports:
+    - name: http
+      port: 8002
+      targetPort: 8002
+# ─────────────────────────── service-b ───────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-b
+  namespace: otel-lab
+  labels:
+    app: service-b
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: service-b
+  template:
+    metadata:
+      labels:
+        app: service-b
+        version: v1
+    spec:
+      serviceAccountName: service-b
+      containers:
+        - name: service-b
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-b:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: otel-lab-config
+          env:
+            - name: PORT
+              value: "8001"
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.namespace.name=otel-lab,k8s.pod.name=$(K8S_POD_NAME),k8s.container.name=service-b"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b
+  namespace: otel-lab
+  labels:
+    app: service-b
+spec:
+  selector:
+    app: service-b
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+# ─────────────────────────── service-a ───────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  namespace: otel-lab
+  labels:
+    app: service-a
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+        version: v1
+    spec:
+      serviceAccountName: service-a
+      containers:
+        - name: service-a
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-a:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: otel-lab-config
+          env:
+            - name: PORT
+              value: "8000"
+            - name: AUTH_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: auth-users
+                  key: AUTH_USERS
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.namespace.name=otel-lab,k8s.pod.name=$(K8S_POD_NAME),k8s.container.name=service-a"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a
+  namespace: otel-lab
+  labels:
+    app: service-a
+spec:
+  selector:
+    app: service-a
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

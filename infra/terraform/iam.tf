@@ -28,8 +28,11 @@ locals {
       "roles/monitoring.metricWriter",
       "roles/logging.logWriter",
     ]
+    # El Auth Proxy (sidecar) exporta sus propias trazas y métricas
     "data-service" = [
       "roles/cloudsql.client",
+      "roles/cloudtrace.agent",
+      "roles/monitoring.metricWriter",
     ]
   }
 }

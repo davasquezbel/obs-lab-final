@@ -1,296 +1,232 @@
 """
-data-service: FastAPI — Tercer microservicio del laboratorio integrador
-Accede a GCP Cloud SQL (PostgreSQL) y AWS RDS según el cloud provider.
-Instrumentado con OTel SDK completo siguiendo OTel DB Semantic Conventions.
+data-service: capa de acceso a datos sobre GCP Cloud SQL (PostgreSQL 16).
+
+- Conexión vía Cloud SQL Auth Proxy (sidecar) en 127.0.0.1:5432, identidad por Workload Identity.
+- Cada query genera un span CLIENT con OTel Database Semantic Conventions
+  (atributos estables + legacy para compatibilidad con backends antiguos).
+- sqlcommenter: el traceparent viaja como comentario SQL, lo que permite a
+  Cloud SQL Query Insights enlazar cada query con su traza en Cloud Trace.
 """
 
-import logging
 import os
 import time
-import random
-import json
+from contextlib import asynccontextmanager, contextmanager
+from urllib.parse import quote
+
 import psycopg2
-from contextlib import asynccontextmanager
+from psycopg2 import pool
 from fastapi import FastAPI, HTTPException
-from pythonjsonlogger import jsonlogger
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, StatusCode
 
-# ── OTel SDK ──────────────────────────────────────────────────────
-from opentelemetry import trace, metrics
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+from common.telemetry import Telemetry
 
-# ── Config ─────────────────────────────────────────────────────────
-OTEL_ENDPOINT   = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
-CLOUD_PROVIDER  = os.getenv("CLOUD_PROVIDER", "gcp")
-APP_VERSION     = os.getenv("APP_VERSION", "1.0.0")
-ENV             = os.getenv("ENVIRONMENT", "production")
+SERVICE = "data-service"
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_NAME = os.getenv("DB_NAME", "appdb")
+DB_USER = os.getenv("DB_USER", "app")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+CLOUDSQL_INSTANCE = os.getenv("CLOUDSQL_INSTANCE", "")
 
-# DB según cloud provider
-# GCP Cloud SQL: postgresql://user:pass@/dbname?host=/cloudsql/project:region:instance
-# AWS RDS:       postgresql://user:pass@rds-endpoint:5432/dbname
-DB_DSN = os.getenv("DATABASE_URL", "postgresql://app:secret@postgres:5432/appdb")
+tel = Telemetry(SERVICE)
+logger, tracer = tel.logger, tel.tracer
 
-# ── OTel Resource ──────────────────────────────────────────────────
-resource = Resource.create({
-    SERVICE_NAME:    "data-service",
-    SERVICE_VERSION: APP_VERSION,
-    "deployment.environment": ENV,
-    "cloud.provider": CLOUD_PROVIDER,
-    # GCP Cloud SQL o AWS RDS según el provider
-    "db.system": "postgresql",
-    "db.provider": "cloud-sql" if CLOUD_PROVIDER == "gcp" else "rds",
-})
-
-# ── TracerProvider ─────────────────────────────────────────────────
-tracer_provider = TracerProvider(resource=resource)
-tracer_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True))
-)
-trace.set_tracer_provider(tracer_provider)
-tracer = trace.get_tracer("data-service", APP_VERSION)
-
-# ── MeterProvider ──────────────────────────────────────────────────
-meter_provider = MeterProvider(
-    resource=resource,
-    metric_readers=[
-        PeriodicExportingMetricReader(
-            OTLPMetricExporter(endpoint=OTEL_ENDPOINT, insecure=True),
-            export_interval_millis=15000,
-        )
-    ],
-)
-metrics.set_meter_provider(meter_provider)
-meter = metrics.get_meter("data-service", APP_VERSION)
-
-# ── Instrumentos de métricas ───────────────────────────────────────
-db_query_duration = meter.create_histogram(
-    "db_query_duration_seconds",
-    description="Latencia de queries a Cloud SQL / RDS",
+db_duration = tel.meter.create_histogram(
+    "db_client_operation_duration",
     unit="s",
+    description="Duración de operaciones contra Cloud SQL",
 )
-db_connections_active = meter.create_up_down_counter(
-    "db_connections_active",
-    description="Conexiones activas a la base de datos",
-    unit="1",
-)
-db_errors_total = meter.create_counter(
-    "db_errors_total",
-    description="Total errores de base de datos",
-    unit="1",
-)
-# SLI: disponibilidad del servicio de datos
-data_requests_total = meter.create_counter(
-    "data_requests_total",
-    description="Total requests al data-service",
-    unit="1",
+db_errors = tel.meter.create_counter(
+    "db_client_errors",
+    description="Errores de base de datos por tipo",
 )
 
-# ── Logging estructurado ───────────────────────────────────────────
-class OtelJsonFormatter(jsonlogger.JsonFormatter):
-    def add_fields(self, log_record, record, message_dict):
-        super().add_fields(log_record, record, message_dict)
-        span = trace.get_current_span()
-        ctx  = span.get_span_context()
-        if ctx and ctx.is_valid:
-            log_record["trace_id"] = format(ctx.trace_id, "032x")
-            log_record["span_id"]  = format(ctx.span_id, "016x")
-        log_record["service"]       = "data-service"
-        log_record["cloud_provider"] = CLOUD_PROVIDER
+_pool: pool.ThreadedConnectionPool | None = None
 
-handler = logging.StreamHandler()
-handler.setFormatter(OtelJsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
-logging.basicConfig(level=logging.INFO, handlers=[handler])
-logger = logging.getLogger("data-service")
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
+    price NUMERIC(10,2) NOT NULL);
+CREATE TABLE IF NOT EXISTS inventory (
+    product_id TEXT PRIMARY KEY REFERENCES products(id), available INT NOT NULL,
+    warehouse TEXT NOT NULL, last_updated TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS orders (
+    id INT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
+    quantity INT NOT NULL, status TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+"""
 
-# ── Auto-instrumentación ───────────────────────────────────────────
-FastAPIInstrumentor().instrument(tracer_provider=tracer_provider)
-Psycopg2Instrumentor().instrument(tracer_provider=tracer_provider)
+SEED_SQL = """
+INSERT INTO products (id, name, category, price)
+SELECT 'P' || lpad(g::text, 3, '0'), 'Producto ' || g,
+       (ARRAY['licores','vinos','cervezas','snacks'])[1 + g % 4], round((10 + g * 3.7)::numeric, 2)
+FROM generate_series(1, 20) g ON CONFLICT DO NOTHING;
+INSERT INTO inventory (product_id, available, warehouse)
+SELECT 'P' || lpad(g::text, 3, '0'), (g * 37) % 120, (ARRAY['BOG','MDE','CLO'])[1 + g % 3]
+FROM generate_series(1, 20) g ON CONFLICT DO NOTHING;
+INSERT INTO orders (id, product_id, quantity, status)
+SELECT g, 'P' || lpad((1 + g % 20)::text, 3, '0'), 1 + g % 5,
+       (ARRAY['CREATED','PAID','SHIPPED','DELIVERED'])[1 + g % 4]
+FROM generate_series(1, 100) g ON CONFLICT DO NOTHING;
+"""
 
-# ── DB helpers ─────────────────────────────────────────────────────
-def get_connection():
-    """Conecta a Cloud SQL (GCP) o RDS (AWS) según CLOUD_PROVIDER."""
-    return psycopg2.connect(DB_DSN)
 
-# ── Chaos flags (Módulo D) ─────────────────────────────────────────
-CHAOS_LATENCY_MS  = int(os.getenv("CHAOS_LATENCY_MS", "0"))    # inyectar latencia
-CHAOS_ERROR_RATE  = float(os.getenv("CHAOS_ERROR_RATE", "0"))  # 0.0-1.0
+def _sqlcomment(action: str, route: str) -> str:
+    """Comentario sqlcommenter con traceparent + tags de aplicación (Query Insights)."""
+    ctx = trace.get_current_span().get_span_context()
+    tags = {
+        "action": action,
+        "controller": SERVICE,
+        "framework": "fastapi",
+        "route": route,
+        "traceparent": f"00-{ctx.trace_id:032x}-{ctx.span_id:016x}-{int(ctx.trace_flags):02x}",
+    }
+    comment = " /*" + ",".join(f"{k}='{quote(v)}'" for k, v in sorted(tags.items())) + "*/"
+    # La codificación URL usa '%', que psycopg2 interpretaría como placeholder
+    return comment.replace("%", "%%")
 
-def apply_chaos():
-    """Aplica los experimentos de caos si están configurados."""
-    if CHAOS_LATENCY_MS > 0:
-        time.sleep(CHAOS_LATENCY_MS / 1000)
-        logger.warning("Chaos: latencia inyectada", extra={"latency_ms": CHAOS_LATENCY_MS})
 
-    if CHAOS_ERROR_RATE > 0 and random.random() < CHAOS_ERROR_RATE:
-        logger.error("Chaos: error inyectado", extra={"error_rate": CHAOS_ERROR_RATE})
-        raise HTTPException(status_code=500, detail="Chaos: error inyectado deliberadamente")
+@contextmanager
+def db_span(operation: str, collection: str, query: str):
+    """Span CLIENT con OTel DB Semantic Conventions (v1.26+ estables y legacy)."""
+    with tracer.start_as_current_span(
+        f"{operation} {DB_NAME}.{collection}",
+        kind=SpanKind.CLIENT,
+        attributes={
+            # Estables
+            "db.system.name": "postgresql",
+            "db.namespace": DB_NAME,
+            "db.operation.name": operation,
+            "db.collection.name": collection,
+            "db.query.text": query,
+            "server.address": DB_HOST,
+            "server.port": DB_PORT,
+            # Legacy (compatibilidad)
+            "db.system": "postgresql",
+            "db.name": DB_NAME,
+            "db.operation": operation,
+            "db.sql.table": collection,
+            "db.statement": query,
+            "db.user": DB_USER,
+            # Contexto GCP
+            "gcp.cloudsql.instance": CLOUDSQL_INSTANCE,
+        },
+    ) as span:
+        start = time.perf_counter()
+        outcome = "ok"
+        try:
+            yield span
+        except psycopg2.Error as e:
+            outcome = "error"
+            span.record_exception(e)
+            span.set_status(StatusCode.ERROR, str(e).strip())
+            span.set_attribute("error.type", type(e).__name__)
+            if e.pgcode:
+                span.set_attribute("db.response.status_code", e.pgcode)
+            db_errors.add(1, {"db_operation_name": operation, "error_type": type(e).__name__})
+            raise
+        finally:
+            db_duration.record(time.perf_counter() - start, {
+                "db_system_name": "postgresql",
+                "db_operation_name": operation,
+                "db_collection_name": collection,
+                "outcome": outcome,
+            })
 
-# ── App ────────────────────────────────────────────────────────────
+
+def query(operation: str, collection: str, sql: str, params: tuple, route: str, many: bool):
+    with db_span(operation, collection, sql) as span:
+        conn = _pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql + _sqlcomment(f"{operation.lower()}_{collection}", route), params)
+                rows = cur.fetchall() if many else cur.fetchone()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            _pool.putconn(conn)
+        span.set_attribute("db.response.returned_rows", len(rows) if many else int(rows is not None))
+        return rows
+
+
+def init_db(retries: int = 30) -> None:
+    global _pool
+    for attempt in range(1, retries + 1):
+        try:
+            _pool = pool.ThreadedConnectionPool(
+                1, 10, host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+                user=DB_USER, password=DB_PASSWORD, connect_timeout=5,
+                application_name=SERVICE,
+            )
+            break
+        except psycopg2.OperationalError as e:
+            logger.warning("DB no disponible, reintentando", extra={"attempt": attempt, "error": str(e)})
+            time.sleep(2)
+    else:
+        raise RuntimeError("No fue posible conectar a Cloud SQL")
+
+    with tracer.start_as_current_span("db.schema.migrate"):
+        conn = _pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(SCHEMA_SQL)
+                cur.execute(SEED_SQL)
+            conn.commit()
+        finally:
+            _pool.putconn(conn)
+    logger.info("Esquema y datos semilla listos", extra={"instance": CLOUDSQL_INSTANCE})
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("data-service iniciando", extra={
-        "cloud_provider": CLOUD_PROVIDER,
-        "db_dsn_host": DB_DSN.split("@")[-1].split("/")[0],
-    })
+    init_db()
     yield
-    tracer_provider.shutdown()
-    meter_provider.shutdown()
+    if _pool:
+        _pool.closeall()
+    tel.shutdown()
 
-app = FastAPI(
-    title="Data Service",
-    description="Tercer microservicio — acceso a Cloud SQL / RDS con OTel DB Semantic Conventions",
-    version=APP_VERSION,
-    lifespan=lifespan,
-)
+
+app = FastAPI(title="data-service", version=os.getenv("APP_VERSION", "1.0.0"), lifespan=lifespan)
+tel.instrument(app)
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "service": "data-service", "cloud": CLOUD_PROVIDER}
+def health():
+    return {"status": "ok", "service": SERVICE}
+
+
+@app.get("/data/orders/{order_id}")
+def get_order(order_id: int):
+    row = query("SELECT", "orders",
+                "SELECT id, product_id, quantity, status FROM orders WHERE id = %s",
+                (order_id,), "/data/orders/{order_id}", many=False)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    return {"id": row[0], "product_id": row[1], "quantity": row[2], "status": row[3],
+            "trace_id": tel.current_trace_id()}
+
+
+@app.get("/data/inventory/{product_id}")
+def get_inventory(product_id: str):
+    row = query("SELECT", "inventory",
+                "SELECT product_id, available, warehouse, last_updated FROM inventory WHERE product_id = %s",
+                (product_id,), "/data/inventory/{product_id}", many=False)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+    return {"product_id": row[0], "available": row[1], "warehouse": row[2],
+            "last_updated": row[3].isoformat()}
 
 
 @app.get("/data/products")
-async def get_products(category: str = "all"):
-    """
-    Consulta catálogo de productos desde Cloud SQL (GCP) o RDS (AWS).
-    Implementa OTel DB Semantic Conventions:
-    - db.system: postgresql
-    - db.operation: SELECT
-    - db.sql.table: products
-    - db.statement: (query completa)
-    """
-    data_requests_total.add(1, {"endpoint": "/data/products", "cloud": CLOUD_PROVIDER})
-
-    # Aplicar chaos si está configurado (Módulo D)
-    apply_chaos()
-
-    start = time.time()
-    db_connections_active.add(1)
-
-    with tracer.start_as_current_span(
-        "db.query.products",
-        kind=trace.SpanKind.CLIENT,
-        attributes={
-            # ── OTel DB Semantic Conventions ─────────────────────
-            "db.system":      "postgresql",
-            "db.name":        "appdb",
-            "db.operation":   "SELECT",
-            "db.sql.table":   "products",
-            "db.user":        "app",
-            # Atributo del provider cloud
-            "db.connection_string": f"{CLOUD_PROVIDER}-db",
-            # Atributos de negocio
-            "query.category": category,
-            "query.cloud":    CLOUD_PROVIDER,
-        }
-    ) as span:
-        try:
-            conn = get_connection()
-            cur  = conn.cursor()
-
-            query = "SELECT id, name, category, price, stock FROM products"
-            params = []
-            if category != "all":
-                query += " WHERE category = %s"
-                params.append(category)
-            query += " LIMIT 50"
-
-            # Registrar el statement completo en el span
-            span.set_attribute("db.statement", query)
-
-            cur.execute(query, params)
-            rows = cur.fetchall()
-            conn.close()
-
-            duration = time.time() - start
-            db_query_duration.record(duration, {
-                "operation":  "SELECT",
-                "table":      "products",
-                "cloud":      CLOUD_PROVIDER,
-                "db.provider": "cloud-sql" if CLOUD_PROVIDER == "gcp" else "rds",
-            })
-
-            span.set_attribute("db.rows_returned", len(rows))
-            span.set_attribute("db.query_duration_ms", round(duration * 1000, 2))
-            span.set_status(trace.StatusCode.OK)
-
-            logger.info("Products query completada", extra={
-                "rows":     len(rows),
-                "category": category,
-                "duration": round(duration, 4),
-                "cloud":    CLOUD_PROVIDER,
-            })
-
-            return {
-                "products":      [{"id": r[0], "name": r[1], "category": r[2],
-                                   "price": float(r[3]), "stock": r[4]} for r in rows],
-                "count":         len(rows),
-                "cloud_provider": CLOUD_PROVIDER,
-                "db_provider":   "Cloud SQL" if CLOUD_PROVIDER == "gcp" else "RDS",
-                "trace_id":      format(trace.get_current_span().get_span_context().trace_id, "032x"),
-            }
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            db_errors_total.add(1, {"operation": "SELECT", "cloud": CLOUD_PROVIDER})
-            span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR, str(e))
-            logger.error("DB query fallida", extra={"error": str(e), "cloud": CLOUD_PROVIDER})
-            raise HTTPException(status_code=500, detail=f"DB error: {str(e)}")
-        finally:
-            db_connections_active.add(-1)
-
-
-@app.get("/data/analytics/{product_id}")
-async def get_product_analytics(product_id: str):
-    """
-    Query analítica más costosa — para demostrar latencia en el flame graph.
-    Simula un JOIN con tabla de ventas y cálculo de métricas agregadas.
-    """
-    apply_chaos()
-
-    with tracer.start_as_current_span(
-        "db.query.analytics",
-        kind=trace.SpanKind.CLIENT,
-        attributes={
-            "db.system":     "postgresql",
-            "db.operation":  "SELECT",
-            "db.sql.table":  "sales",
-            "db.statement":  "SELECT AVG(quantity), SUM(revenue) FROM sales WHERE product_id = ?",
-            "product.id":    product_id,
-            "query.type":    "analytics",
-        }
-    ) as span:
-        # Simular latencia de query analítica (50-300ms)
-        simulated_latency = random.uniform(0.05, 0.3)
-        time.sleep(simulated_latency)
-
-        span.set_attribute("db.query_duration_ms", round(simulated_latency * 1000, 2))
-        span.set_attribute("analytics.simulated", True)
-
-        result = {
-            "product_id":     product_id,
-            "avg_quantity":   round(random.uniform(1, 10), 2),
-            "total_revenue":  round(random.uniform(1000, 50000), 2),
-            "query_duration": round(simulated_latency * 1000, 2),
-            "trace_id":       format(trace.get_current_span().get_span_context().trace_id, "032x"),
-        }
-        return result
-
-
-@app.get("/chaos/status")
-async def chaos_status():
-    """Estado actual de los experimentos de caos (Módulo D)."""
-    return {
-        "chaos_latency_ms":  CHAOS_LATENCY_MS,
-        "chaos_error_rate":  CHAOS_ERROR_RATE,
-        "chaos_active":      CHAOS_LATENCY_MS > 0 or CHAOS_ERROR_RATE > 0,
-    }
+def list_products(category: str = "all"):
+    sql = "SELECT id, name, category, price FROM products"
+    params: tuple = ()
+    if category != "all":
+        sql += " WHERE category = %s"
+        params = (category,)
+    rows = query("SELECT", "products", sql + " ORDER BY id LIMIT 50", params,
+                 "/data/products", many=True)
+    return {"count": len(rows),
+            "products": [{"id": r[0], "name": r[1], "category": r[2], "price": float(r[3])} for r in rows]}
