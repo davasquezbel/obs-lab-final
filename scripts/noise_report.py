@@ -17,6 +17,7 @@ Uso: python3 scripts/noise_report.py --events results/noise-test-*.events.csv --
 import argparse
 import csv
 import json
+import re
 import subprocess
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -25,7 +26,9 @@ GRACE = timedelta(minutes=3)
 
 
 def parse(ts):
-    return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+    # Cloud Logging entrega nanosegundos; fromisoformat (Python < 3.11) acepta máx. 6 decimales
+    ts = re.sub(r"(\.\d{6})\d+", r"\1", ts.replace("Z", "+00:00"))
+    return datetime.fromisoformat(ts).astimezone(timezone.utc)
 
 
 def gcloud_logs(flt, limit=2000, order="asc"):
