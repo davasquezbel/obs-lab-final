@@ -1,0 +1,63 @@
+# Ingress gateway de Cloud Service Mesh (Envoy inyectado con la plantilla "gateway").
+# Punto de entrada N-S expuesto con un Load Balancer externo.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-gateway
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+      istio: ingressgateway
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+      labels:
+        app: istio-ingressgateway
+        istio: ingressgateway
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: istio-ingressgateway
+      containers:
+        - name: istio-proxy
+          image: auto   # el injector reemplaza la imagen por la versión gestionada
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-gateway
+  labels:
+    app: istio-ingressgateway
+    istio: ingressgateway
+spec:
+  type: LoadBalancer
+  selector:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

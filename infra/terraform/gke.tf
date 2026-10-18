@@ -30,6 +30,11 @@ resource "google_container_cluster" "gke" {
   # GKE Dataplane V2 (eBPF/Cilium): base para observabilidad de red
   datapath_provider = "ADVANCED_DATAPATH"
 
+  # Registro en la flota (requisito de Cloud Service Mesh gestionado)
+  fleet {
+    project = var.project_id
+  }
+
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }

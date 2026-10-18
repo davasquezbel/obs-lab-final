@@ -1,0 +1,121 @@
+# ── Cloud Service Mesh: seguridad y políticas de tráfico L7 ─────────────
+# Requisito: namespace otel-lab con la etiqueta istio-injection=enabled
+# (aplicada por scripts/deploy-mesh.sh) para que cada pod reciba su sidecar Envoy.
+
+# mTLS obligatorio entre servicios: todo el tráfico E-W queda cifrado y con identidad SPIFFE
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: otel-lab
+spec:
+  mtls:
+    mode: STRICT
+---
+# Entrada N-S: el Gateway del namespace istio-gateway expone service-a
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: otel-lab-gateway
+  namespace: otel-lab
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts: ["*"]
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: service-a
+  namespace: otel-lab
+spec:
+  hosts: ["*"]
+  gateways: ["otel-lab-gateway"]
+  http:
+    - match:
+        - uri:
+            prefix: /order
+        - uri:
+            exact: /login
+      route:
+        - destination:
+            host: service-a.otel-lab.svc.cluster.local
+            port:
+              number: 8000
+      timeout: 5s
+---
+# Reintentos solo ante fallas de transporte (pod reiniciando, conexión reseteada).
+# No se reintentan respuestas 5xx de la aplicación: así los errores reales
+# (p. ej. el experimento de caos 2) siguen siendo visibles en los SLIs.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: data-service
+  namespace: otel-lab
+spec:
+  hosts: ["data-service"]
+  http:
+    - route:
+        - destination:
+            host: data-service
+      timeout: 3s
+      retries:
+        attempts: 2
+        perTryTimeout: 1500ms
+        retryOn: connect-failure,refused-stream,reset
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: service-b
+  namespace: otel-lab
+spec:
+  hosts: ["service-b"]
+  http:
+    - route:
+        - destination:
+            host: service-b
+      timeout: 3s
+      retries:
+        attempts: 2
+        perTryTimeout: 1500ms
+        retryOn: connect-failure,refused-stream,reset
+---
+# Detección de outliers: expulsa temporalmente un pod que acumule 5xx consecutivos
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: data-service
+  namespace: otel-lab
+spec:
+  host: data-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+    outlierDetection:
+      consecutive5xxErrors: 10
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: service-b
+  namespace: otel-lab
+spec:
+  host: service-b
+  trafficPolicy:
+    outlierDetection:
+      consecutive5xxErrors: 10
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50

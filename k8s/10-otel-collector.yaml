@@ -77,6 +77,10 @@ spec:
       app: otel-collector
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "96Mi"
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
       labels:
         app: otel-collector
     spec:

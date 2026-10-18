@@ -16,16 +16,21 @@ spec:
       app: data-service
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "96Mi"
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
       labels:
         app: data-service
         version: v1
     spec:
       serviceAccountName: data-service
-      initContainers:
-        # Sidecar nativo: arranca antes que la app y vive durante todo el pod
+      containers:
+        # Sidecar clásico (contenedor regular). El injector de Cloud Service Mesh
+        # no preserva restartPolicy en sidecars nativos (initContainers), por eso
+        # el proxy va aquí; data-service reintenta la conexión hasta que esté listo.
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.3
-          restartPolicy: Always
           args:
             - "--structured-logs"
             - "--port=5432"
@@ -48,7 +53,6 @@ spec:
             requests:
               cpu: 25m
               memory: 64Mi
-      containers:
         - name: data-service
           image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/data-service:1.0.0
           imagePullPolicy: Always
@@ -84,6 +88,10 @@ spec:
             httpGet:
               path: /health
               port: 8002
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           resources:
             requests:
               cpu: 100m
@@ -125,6 +133,10 @@ spec:
       app: service-b
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "96Mi"
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
       labels:
         app: service-b
         version: v1
@@ -153,6 +165,10 @@ spec:
             httpGet:
               path: /health
               port: 8001
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           resources:
             requests:
               cpu: 100m
@@ -194,6 +210,10 @@ spec:
       app: service-a
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "96Mi"
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
       labels:
         app: service-a
         version: v1
@@ -227,6 +247,10 @@ spec:
             httpGet:
               path: /health
               port: 8000
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           resources:
             requests:
               cpu: 100m

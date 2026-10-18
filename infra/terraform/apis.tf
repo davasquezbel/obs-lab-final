@@ -14,6 +14,8 @@ locals {
     "securitycenter.googleapis.com",
     "containersecurity.googleapis.com",
     "containeranalysis.googleapis.com",
+    "gkehub.googleapis.com",
+    "mesh.googleapis.com",
   ]
 }
 
