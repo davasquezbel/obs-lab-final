@@ -229,6 +229,7 @@ const aws = [
   bullet("**Fallas en el mesh:** Traffic Director propagó los cambios de VirtualService en 2–5 min, por lo que los experimentos usan Chaos Mesh y fallas en proceso con efecto inmediato."),
   bullet("**X-Forwarded-For:** el gateway gestionado no lo propaga; la atribución de clientes externos se hizo en la capa de red (externalTrafficPolicy=Local + Flow Logs)."),
   bullet("**Falsos positivos conocidos:** la alerta de \"origen no autorizado\" (que incluye pods efímeros sin metadatos en Flow Logs) se activa con los pods nuevos de un despliegue; queda como mejora correlacionarla con eventos de despliegue."),
+  bullet("**Correos suprimidos:** la alerta basada en logs abre un solo incidente mientras sigan llegando coincidencias; durante los experimentos el incidente no se cerró y los diagnósticos posteriores quedaron en Cloud Logging pero no generaron correo. Mejora: notificar desde el enriquecedor (Pub/Sub) o un incidente por política/servicio."),
   bullet("**Evidencia completa:** la bitácora del laboratorio (74 archivos de evidencia entre capturas y salidas de comandos) respalda cada cifra de este reporte."),
 ];
 
