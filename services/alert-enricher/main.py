@@ -56,8 +56,12 @@ def _ts(value) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def find_evidence_log(service: str | None, since: datetime) -> dict | None:
-    """Request fallido más reciente del servicio; si no hay, el más lento (> SLOW_MS)."""
+def find_evidence_log(service: str | None, since: datetime, prefer: str = "error") -> dict | None:
+    """Request de evidencia del servicio: el fallido (5xx) o el lento (> SLOW_MS) más reciente.
+
+    `prefer` ordena la búsqueda según el tipo de alerta: una alerta de latencia busca
+    primero un request lento, una de errores busca primero un 5xx.
+    """
     base = (f'resource.type="k8s_container" resource.labels.namespace_name="{NAMESPACE}" '
             f'timestamp>="{since.isoformat()}" trace:*')
     if service:
@@ -66,6 +70,8 @@ def find_evidence_log(service: str | None, since: datetime) -> dict | None:
         ("error", base + ' jsonPayload.status_class="5xx"'),
         ("slow", base + f' jsonPayload.message="request completed" jsonPayload.latency_ms>{SLOW_MS}'),
     ]
+    if prefer == "slow":
+        candidates.reverse()
     for kind, flt in candidates:
         resp = httpx.post(
             "https://logging.googleapis.com/v2/entries:list",
@@ -211,7 +217,12 @@ async def alert(request: Request, token: str = ""):
         return {"status": "recorded"}
 
     t0 = time.perf_counter()
-    entry = find_evidence_log(service, started_at - timedelta(minutes=LOOKBACK_MIN))
+    text = f"{policy} {inc.get('condition_name', '')}".lower()
+    prefer = "slow" if ("latencia" in text or "latency" in text) and "error" not in text else "error"
+    # El detector en tiempo real notifica a tiempo: basta mirar desde poco antes del inicio.
+    # Las políticas gestionadas llegan minutos tarde: se mira más atrás.
+    lookback = timedelta(minutes=3 if policy_type == "aiops-rt" else LOOKBACK_MIN)
+    entry = find_evidence_log(service, started_at - lookback, prefer)
     if not entry:
         log("WARNING", f"Sin evidencia de traza para {policy}", event="alert.enriched",
             trace_id=None, **common)
