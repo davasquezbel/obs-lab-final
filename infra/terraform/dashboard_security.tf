@@ -158,7 +158,7 @@ locals {
         xyChart = {
           dataSets = [{
             plotType        = "LINE"
-            timeSeriesQuery = { prometheusQuery = "100 * sum(rate(istio_io:service_server_request_count{monitored_resource=\"k8s_container\",destination_service_namespace=\"${var.app_namespace}\",connection_security_policy=\"mutual_tls\"}[5m])) / sum(rate(istio_io:service_server_request_count{monitored_resource=\"k8s_container\",destination_service_namespace=\"${var.app_namespace}\"}[5m]))" }
+            timeSeriesQuery = { prometheusQuery = "100 * sum(rate(istio_io:service_server_request_count{monitored_resource=\"k8s_container\",destination_service_namespace=\"${var.app_namespace}\",service_authentication_policy=\"MUTUAL_TLS\"}[5m])) / sum(rate(istio_io:service_server_request_count{monitored_resource=\"k8s_container\",destination_service_namespace=\"${var.app_namespace}\"}[5m]))" }
           }]
           thresholds = [{ value = 99, label = "tráfico sin mTLS" }]
           yAxis      = { label = "%", scale = "LINEAR" }
