@@ -8,11 +8,13 @@
 locals {
   flows_log = "logName=\"projects/${var.project_id}/logs/compute.googleapis.com%2Fvpc_flows\""
 
-  # Origen fuera de los namespaces autorizados hacia la aplicación (movimiento lateral)
+  # Origen dentro del cluster pero fuera de los namespaces autorizados hacia la aplicación
+  # (movimiento lateral). Incluye pods efímeros: si el pod ya no existe cuando se genera el
+  # flow log, GKE no puede anotar su namespace → también se considera no autorizado.
   flows_unexpected_source = join(" AND ", [
     local.flows_log,
     "jsonPayload.dest_gke_details.pod.pod_namespace=\"${var.app_namespace}\"",
-    "jsonPayload.src_gke_details.pod.pod_namespace:*",
+    "jsonPayload.src_gke_details.cluster.cluster_name:*",
     "NOT jsonPayload.src_gke_details.pod.pod_namespace=(\"${var.app_namespace}\" OR \"istio-gateway\")",
   ])
   netpol_denied = "logName=\"projects/${var.project_id}/logs/policy-action\" AND jsonPayload.disposition=\"deny\""
@@ -209,14 +211,14 @@ resource "google_monitoring_alert_policy" "sec_unexpected_flows" {
       filter = local.flows_unexpected_source
       label_extractors = {
         src_namespace = "EXTRACT(jsonPayload.src_gke_details.pod.pod_namespace)"
-        src_pod       = "EXTRACT(jsonPayload.src_gke_details.pod.pod_name)"
+        src_ip        = "EXTRACT(jsonPayload.connection.src_ip)"
         dest_workload = "EXTRACT(jsonPayload.dest_gke_details.pod.workload.name)"
         dest_port     = "EXTRACT(jsonPayload.connection.dest_port)"
       }
     }
   }
   documentation {
-    content   = "VPC Flow Logs registró tráfico desde `$${log.extracted_label.src_namespace}/$${log.extracted_label.src_pod}` hacia `$${log.extracted_label.dest_workload}:$${log.extracted_label.dest_port}` (fuera del patrón de comunicación esperado)."
+    content   = "VPC Flow Logs registró tráfico desde `$${log.extracted_label.src_ip}` (namespace: `$${log.extracted_label.src_namespace}`) hacia `$${log.extracted_label.dest_workload}:$${log.extracted_label.dest_port}` (fuera del patrón de comunicación esperado)."
     mime_type = "text/markdown"
   }
   notification_channels = [google_monitoring_notification_channel.email.id, google_monitoring_notification_channel.enricher.id]

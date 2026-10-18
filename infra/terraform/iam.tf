@@ -37,6 +37,12 @@ locals {
       "roles/securitycenter.findingsViewer",
       "roles/containeranalysis.occurrences.viewer",
       "roles/monitoring.metricWriter",
+      # Lectura de configuración para los chequeos de postura
+      "roles/iam.securityReviewer",
+      "roles/cloudsql.viewer",
+      "roles/compute.networkViewer",
+      "roles/container.clusterViewer",
+      "roles/run.viewer",
     ]
     # El Auth Proxy (sidecar) exporta sus propias trazas y métricas
     "data-service" = [

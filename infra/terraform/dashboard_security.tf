@@ -229,13 +229,13 @@ locals {
     {
       xPos = 32, yPos = 48, width = 16, height = 16,
       widget = {
-        title = "Findings activos en Security Command Center, por severidad"
+        title = "Hallazgos de postura (estilo Security Health Analytics), por severidad"
         xyChart = {
           dataSets = [{
             plotType = "STACKED_BAR"
             timeSeriesQuery = {
               timeSeriesFilter = {
-                filter = "metric.type=\"custom.googleapis.com/security/scc_active_findings\" AND metric.label.severity!=\"TOTAL\""
+                filter = "metric.type=\"custom.googleapis.com/security/posture_findings\" AND metric.label.severity!=\"TOTAL\""
                 aggregation = {
                   alignmentPeriod    = "600s"
                   perSeriesAligner   = "ALIGN_MAX"

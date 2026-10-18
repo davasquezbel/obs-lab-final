@@ -34,7 +34,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: security-exporter
-              image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/security-exporter:1.0.5
+              image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/security-exporter:1.0.7
               env:
                 - name: GOOGLE_CLOUD_PROJECT
                   value: obs-lab-final

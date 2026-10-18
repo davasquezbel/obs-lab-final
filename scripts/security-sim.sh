@@ -12,9 +12,11 @@ GW=$(kubectl -n istio-gateway get svc istio-ingressgateway -o jsonpath='{.status
 BF_SECONDS=${BF_SECONDS:-150}
 BF_RPS=${BF_RPS:-6}
 
+MODE=${1:-all}   # all | bruteforce | scan
 say() { echo "$(date -u +%FT%TZ) $*"; }
 
 # ── 1. Fuerza bruta ───────────────────────────────────────────────────
+if [ "$MODE" != scan ]; then
 say "ATAQUE 1 inicio: fuerza bruta contra http://$GW/login (${BF_RPS} req/s durante ${BF_SECONDS}s)"
 end=$(( $(date +%s) + BF_SECONDS )); n=0
 while [ "$(date +%s)" -lt "$end" ]; do
@@ -28,8 +30,9 @@ while [ "$(date +%s)" -lt "$end" ]; do
   sleep 1
 done
 say "ATAQUE 1 fin: $n intentos enviados"
-
-sleep 30
+[ "$MODE" = all ] && sleep 30
+fi
+[ "$MODE" = bruteforce ] && exit 0
 
 # ── 2. Movimiento lateral / escaneo de puertos ───────────────────────
 DS_POD=$(kubectl -n $NS get pod -l app=data-service -o jsonpath='{.items[0].metadata.name}')
