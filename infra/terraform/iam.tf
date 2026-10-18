@@ -32,6 +32,12 @@ locals {
     "aiops-detector" = [
       "roles/monitoring.viewer",
     ]
+    # Exportador de señales de seguridad (SCC + CVEs → Cloud Monitoring)
+    "security-exporter" = [
+      "roles/securitycenter.findingsViewer",
+      "roles/containeranalysis.occurrences.viewer",
+      "roles/monitoring.metricWriter",
+    ]
     # El Auth Proxy (sidecar) exporta sus propias trazas y métricas
     "data-service" = [
       "roles/cloudsql.client",

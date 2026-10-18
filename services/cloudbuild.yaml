@@ -25,6 +25,10 @@ steps:
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_REGISTRY}/aiops-detector:${_TAG}", "aiops-detector"]
     waitFor: ["-"]
+  - id: security-exporter
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REGISTRY}/security-exporter:${_TAG}", "security-exporter"]
+    waitFor: ["-"]
 
 images:
   - ${_REGISTRY}/service-a:${_TAG}
@@ -32,6 +36,7 @@ images:
   - ${_REGISTRY}/data-service:${_TAG}
   - ${_REGISTRY}/alert-enricher:${_TAG}
   - ${_REGISTRY}/aiops-detector:${_TAG}
+  - ${_REGISTRY}/security-exporter:${_TAG}
 
 options:
   logging: CLOUD_LOGGING_ONLY

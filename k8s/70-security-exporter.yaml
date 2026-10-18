@@ -1,0 +1,49 @@
+# CronJob que publica findings de Security Command Center y CVEs de imágenes como
+# métricas custom.googleapis.com/security/* (services/security-exporter).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: security-exporter
+  namespace: otel-lab
+  annotations:
+    iam.gke.io/gcp-service-account: security-exporter@obs-lab-final.iam.gserviceaccount.com
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: security-exporter
+  namespace: otel-lab
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app: security-exporter
+          annotations:
+            # Un Job no termina si queda un sidecar corriendo: sin inyección de Envoy
+            sidecar.istio.io/inject: "false"
+        spec:
+          serviceAccountName: security-exporter
+          restartPolicy: Never
+          containers:
+            - name: security-exporter
+              image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/security-exporter:1.0.5
+              env:
+                - name: GOOGLE_CLOUD_PROJECT
+                  value: obs-lab-final
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false

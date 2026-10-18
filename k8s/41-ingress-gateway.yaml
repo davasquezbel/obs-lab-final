@@ -54,6 +54,8 @@ metadata:
     istio: ingressgateway
 spec:
   type: LoadBalancer
+  # Conserva la IP real del cliente (atribución de ataques N-S, p. ej. fuerza bruta)
+  externalTrafficPolicy: Local
   selector:
     app: istio-ingressgateway
     istio: ingressgateway

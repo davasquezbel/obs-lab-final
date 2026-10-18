@@ -1,0 +1,72 @@
+# ── Seguridad de red E-W con GKE Dataplane V2 (eBPF) ──────────────────
+# Microsegmentación: solo se aceptan conexiones entrantes desde el propio namespace
+# (servicios del mesh) y desde el ingress gateway. Todo lo demás se deniega y Dataplane V2
+# lo registra en Cloud Logging (NetworkLogging) → base de las alertas de tráfico anómalo.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: otel-lab
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: otel-lab
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-service-a
+  namespace: otel-lab
+spec:
+  podSelector:
+    matchLabels:
+      app: service-a
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-gateway
+---
+# Health checks del plano de datos de Cloud Service Mesh / Traffic Director
+# (rangos de Google 35.191.0.0/16 y 130.211.0.0/22) hacia los sidecars.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-google-health-checks
+  namespace: otel-lab
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 35.191.0.0/16
+        - ipBlock:
+            cidr: 130.211.0.0/22
+---
+# Registro de decisiones de NetworkPolicy (eBPF) → Cloud Logging (logName policy-action)
+apiVersion: networking.gke.io/v1alpha1
+kind: NetworkLogging
+metadata:
+  name: default
+spec:
+  cluster:
+    allow:
+      log: false
+      delegate: false
+    deny:
+      log: true
+      delegate: false

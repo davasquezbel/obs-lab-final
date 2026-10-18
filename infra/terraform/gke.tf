@@ -35,6 +35,12 @@ resource "google_container_cluster" "gke" {
     project = var.project_id
   }
 
+  # Postura de seguridad: configuración de workloads + escaneo de vulnerabilidades (CVEs)
+  security_posture_config {
+    mode               = "BASIC"
+    vulnerability_mode = "VULNERABILITY_BASIC"
+  }
+
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }

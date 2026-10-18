@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import BaseModel
 
-from common.telemetry import Telemetry
+from common.telemetry import Telemetry, client_ip
 
 SERVICE = "service-a"
 SERVICE_B_URL = os.getenv("SERVICE_B_URL", "http://service-b:8001")
@@ -93,7 +93,7 @@ async def get_order(order_id: int):
 
 @app.post("/login")
 async def login(body: LoginRequest, request: Request):
-    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
+    source_ip = client_ip(request)
     expected = AUTH_USERS.get(body.username)
     ok = expected is not None and hmac.compare_digest(expected, body.password)
     result = "success" if ok else "failure"
@@ -103,7 +103,9 @@ async def login(body: LoginRequest, request: Request):
     user_ref = hashlib.sha256(body.username.encode()).hexdigest()[:12]
     log = logger.info if ok else logger.warning
     log("auth attempt", extra={"event": "auth.login", "auth_result": result,
-                               "user_ref": user_ref, "client_ip": client_ip})
+                               "user_ref": user_ref, "client_ip": source_ip,
+                               "xff": request.headers.get("x-forwarded-for", ""),
+                               "x_envoy_external_address": request.headers.get("x-envoy-external-address", "")})
     if not ok:
         raise HTTPException(status_code=401, detail="invalid credentials")
     return {"status": "authenticated"}
