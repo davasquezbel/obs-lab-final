@@ -84,7 +84,7 @@ def find_evidence_log(service: str | None, since: datetime) -> dict | None:
 
 
 def trace_summary(trace_id: str) -> dict:
-    """Span más lento y spans con error de la traza (Cloud Trace API v1).
+    """Diagnóstico de la traza (Cloud Trace API v1): dónde se gastó el tiempo y dónde nació el error.
 
     Cloud Trace indexa las trazas con algunos segundos de retraso; si la traza
     todavía no está disponible se reintenta hasta ~30 s.
@@ -103,25 +103,69 @@ def trace_summary(trace_id: str) -> dict:
     if not spans:
         return {"spans": 0}
 
-    def dur_ms(s):
-        start = datetime.fromisoformat(s["startTime"].replace("Z", "+00:00"))
-        end = datetime.fromisoformat(s["endTime"].replace("Z", "+00:00"))
-        return (end - start).total_seconds() * 1000
+    def ts(value):
+        # Cloud Trace entrega nanosegundos; se truncan a microsegundos
+        value = value.replace("Z", "+00:00")
+        if "." in value:
+            head, frac = value.split(".", 1)
+            digits = "".join(ch for ch in frac if ch.isdigit())
+            value = f"{head}.{digits[:6]}{frac[len(digits):]}"
+        return datetime.fromisoformat(value)
 
-    # Se descartan los spans de cliente HTTP genéricos ("GET", "POST"): su duración
-    # ya está contenida en el span de servidor del servicio llamado
-    named = [s for s in spans if " " in s["name"] or "." in s["name"]]
-    child_ids = {s.get("parentSpanId") for s in named}
-    # El span con nombre más profundo y lento indica dónde se gastó el tiempo
-    leaves = [s for s in named if s["spanId"] not in child_ids] or named or spans
-    slowest = max(leaves, key=dur_ms) if leaves else None
-    errors = [s["name"] for s in spans
-              if s.get("labels", {}).get("/http/status_code", s.get("labels", {}).get("http.status_code", "")).startswith("5")]
+    def dur_ms(s):
+        return (ts(s["endTime"]) - ts(s["startTime"])).total_seconds() * 1000
+
+    def svc(s):
+        return s.get("labels", {}).get("service.name", "?")
+
+    def status(s):
+        labels = s.get("labels", {})
+        return labels.get("/http/status_code", labels.get("http.status_code", ""))
+
+    by_id = {s["spanId"]: s for s in spans}
+    children = {}
+    for s in spans:
+        children.setdefault(s.get("parentSpanId"), []).append(s)
+
+    # 1) Tiempo de RED por salto: span cliente − span servidor que lo atiende
+    hops = []
+    for client in (s for s in spans if s.get("kind") == "RPC_CLIENT"):
+        for server in children.get(client["spanId"], []):
+            if server.get("kind") == "RPC_SERVER":
+                hops.append((dur_ms(client) - dur_ms(server), f"{svc(client)} → {svc(server)}", server["name"]))
+    net = max(hops, default=None)
+
+    # 2) Tiempo PROPIO de cada operación (duración − hijos directos)
+    self_times = [(dur_ms(s) - sum(dur_ms(c) for c in children.get(s["spanId"], [])), s)
+                  for s in spans if s.get("kind") != "RPC_CLIENT" or " " in s["name"]]
+    own = max(self_times, key=lambda x: x[0], default=None)
+
+    # 3) Origen del error: el span más profundo con 5xx (sin hijos con 5xx)
+    err = [s for s in spans if status(s).startswith("5")]
+    err_ids = {s["spanId"] for s in err}
+    origin = next((s for s in err if not any(c["spanId"] in err_ids for c in children.get(s["spanId"], []))), None)
+
+    if origin is not None:
+        diagnosis = f"Origen del error: {origin['name']} en {svc(origin)} (HTTP {status(origin)})"
+    elif net and own and net[0] > own[0]:
+        diagnosis = f"Latencia en la RED: {net[1]} ({net[0]:.0f} ms fuera de los servicios)"
+    elif own:
+        diagnosis = f"Latencia dentro de {svc(own[1])}: {own[1]['name']} ({own[0]:.0f} ms propios)"
+    else:
+        diagnosis = None
+
     return {
         "spans": len(spans),
-        "slowest_span": slowest["name"] if slowest else None,
-        "slowest_span_ms": round(dur_ms(slowest), 1) if slowest else None,
-        "error_spans": errors[:5],
+        "diagnosis": diagnosis,
+        "network_hotspot": net[1] if net else None,
+        "network_ms": round(net[0], 1) if net else None,
+        "service_hotspot": f"{own[1]['name']} ({svc(own[1])})" if own else None,
+        "service_self_ms": round(own[0], 1) if own else None,
+        "error_origin": f"{origin['name']} ({svc(origin)})" if origin is not None else None,
+        "error_spans": [f"{s['name']} ({svc(s)})" for s in err][:6],
+        # compatibilidad con la alerta por correo (label slowest_span)
+        "slowest_span": diagnosis,
+        "slowest_span_ms": round(net[0], 1) if net and diagnosis and "RED" in diagnosis else (round(own[0], 1) if own else None),
     }
 
 
@@ -192,6 +236,6 @@ async def alert(request: Request, token: str = ""):
     }
     log("ALERT",
         f"Alerta enriquecida: {policy} | servicio={service} | trace_id={trace_id} | "
-        f"span más lento={summary.get('slowest_span')} ({summary.get('slowest_span_ms')} ms)",
+        f"diagnóstico={summary.get('diagnosis')}",
         event="alert.enriched", **enriched)
     return {"status": "enriched", "trace_id": trace_id}

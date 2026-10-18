@@ -223,7 +223,7 @@ resource "google_monitoring_alert_policy" "enriched_email" {
         policy    = "EXTRACT(jsonPayload.policy)"
         service   = "EXTRACT(jsonPayload.service)"
         trace_id  = "EXTRACT(jsonPayload.trace_id)"
-        span      = "EXTRACT(jsonPayload.slowest_span)"
+        diagnosis = "EXTRACT(jsonPayload.diagnosis)"
         trace_url = "EXTRACT(jsonPayload.trace_url)"
       }
     }
@@ -233,7 +233,7 @@ resource "google_monitoring_alert_policy" "enriched_email" {
       **$${log.extracted_label.policy}** — servicio **$${log.extracted_label.service}**
 
       - trace_id: `$${log.extracted_label.trace_id}`
-      - Span más lento: `$${log.extracted_label.span}`
+      - Diagnóstico: **$${log.extracted_label.diagnosis}**
       - Traza: $${log.extracted_label.trace_url}
     EOT
     mime_type = "text/markdown"

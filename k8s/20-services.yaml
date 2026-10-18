@@ -54,7 +54,7 @@ spec:
               cpu: 25m
               memory: 64Mi
         - name: data-service
-          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/data-service:1.0.3
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/data-service:1.0.6
           imagePullPolicy: Always
           ports:
             - name: http
@@ -149,7 +149,7 @@ spec:
       serviceAccountName: service-b
       containers:
         - name: service-b
-          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-b:1.0.0
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-b:1.0.6
           imagePullPolicy: Always
           ports:
             - name: http
@@ -226,7 +226,7 @@ spec:
       serviceAccountName: service-a
       containers:
         - name: service-a
-          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-a:1.0.5
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/service-a:1.0.6
           imagePullPolicy: Always
           ports:
             - name: http

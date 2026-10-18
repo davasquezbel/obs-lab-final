@@ -144,7 +144,9 @@ class Telemetry:
                 elapsed = time.perf_counter() - start
                 route = request.scope.get("route")
                 attrs = {
-                    "http_route": route.path if route else "unmatched",
+                    # Si un middleware responde antes del enrutamiento (p. ej. falla inyectada)
+                    # no hay ruta resuelta: se usa la ruta cruda
+                    "http_route": route.path if route else request.url.path,
                     "http_method": request.method,
                     "http_status_code": str(status),
                     "status_class": f"{status // 100}xx",
