@@ -4,6 +4,8 @@ Laboratorio integrador de **Observabilidad en Ambientes Productivos** (Maestría
 Integra los tres pilares con OpenTelemetry, AIOps, observabilidad de red y seguridad, SRE (SLO /
 error budget) y Chaos Engineering sobre Google Cloud, todo desplegado con Terraform.
 
+![Arquitectura](docs/img/arquitectura.png)
+
 > Basado en los repositorios guía [`mafeopa/oTelLabs`](https://github.com/mafeopa/oTelLabs) y
 > [`mafeopa/chaos_k8s`](https://github.com/mafeopa/chaos_k8s). **Alcance: solo GCP** (decisión del
 > estudiante; el reporte incluye la equivalencia con AWS).

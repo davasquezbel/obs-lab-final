@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#37474F"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1E88E5"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#C62828"/></marker>
+  </defs>
+  <rect width="1600" height="980" fill="#FFFFFF"/>
+  <text x="800" y="42" text-anchor="middle" font-size="30" font-weight="bold" fill="#1A237E">Arquitectura observable — proyecto GCP obs-lab-final (us-central1)</text>
+
+  <!-- Internet -->
+  <rect x="40" y="90" width="230" height="70" rx="10" fill="#ECEFF1" stroke="#607D8B" stroke-width="2"/>
+  <text x="155" y="122" text-anchor="middle" font-size="20" font-weight="bold" fill="#263238">Usuarios / Internet</text>
+  <text x="155" y="146" text-anchor="middle" font-size="15" fill="#455A64">(y atacante simulado)</text>
+  <rect x="330" y="90" width="300" height="70" rx="10" fill="#ECEFF1" stroke="#607D8B" stroke-width="2"/>
+  <text x="480" y="120" text-anchor="middle" font-size="19" font-weight="bold" fill="#263238">Load Balancer externo</text>
+  <text x="480" y="144" text-anchor="middle" font-size="15" fill="#455A64">externalTrafficPolicy=Local (IP real)</text>
+  <line x1="270" y1="125" x2="326" y2="125" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+
+  <!-- GKE box -->
+  <rect x="30" y="200" width="1100" height="560" rx="14" fill="#F3F8FF" stroke="#1E88E5" stroke-width="3"/>
+  <text x="48" y="228" font-size="17" font-weight="bold" fill="#0D47A1">GKE Standard · Dataplane V2 (eBPF)</text><text x="48" y="249" font-size="15" fill="#0D47A1">Cloud Service Mesh · mTLS · Workload Identity</text><text x="1110" y="228" text-anchor="end" font-size="15" fill="#0D47A1">namespace otel-lab (sandbox)</text>
+
+  <rect x="360" y="255" width="240" height="70" rx="10" fill="#FFFFFF" stroke="#1E88E5" stroke-width="2"/>
+  <text x="480" y="285" text-anchor="middle" font-size="19" font-weight="bold" fill="#0D47A1">Istio ingress gateway</text>
+  <text x="480" y="309" text-anchor="middle" font-size="14" fill="#455A64">entrada N-S</text>
+  <line x1="480" y1="160" x2="480" y2="251" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+
+  <!-- services -->
+  <g font-size="19" font-weight="bold" text-anchor="middle">
+    <rect x="60" y="380" width="200" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+    <text x="160" y="414" fill="#1B5E20">loadgen (k6)</text>
+    <text x="160" y="440" font-size="14" font-weight="normal" fill="#455A64">~5 req/s</text>
+    <rect x="360" y="380" width="240" height="80" rx="10" fill="#FFFFFF" stroke="#1E88E5" stroke-width="2.5"/>
+    <text x="480" y="414" fill="#0D47A1">service-a</text>
+    <text x="480" y="440" font-size="14" font-weight="normal" fill="#455A64">orquestador · /order · /login</text>
+    <rect x="360" y="540" width="240" height="80" rx="10" fill="#FFFFFF" stroke="#1E88E5" stroke-width="2.5"/>
+    <text x="480" y="574" fill="#0D47A1">service-b</text>
+    <text x="480" y="600" font-size="14" font-weight="normal" fill="#455A64">inventario</text>
+    <rect x="740" y="380" width="260" height="80" rx="10" fill="#FFFFFF" stroke="#1E88E5" stroke-width="2.5"/>
+    <text x="870" y="414" fill="#0D47A1">data-service</text>
+    <text x="870" y="440" font-size="14" font-weight="normal" fill="#455A64">+ Cloud SQL Auth Proxy</text>
+  </g>
+  <line x1="260" y1="420" x2="356" y2="420" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+  <line x1="480" y1="325" x2="480" y2="376" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+  <line x1="600" y1="410" x2="736" y2="410" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+  <line x1="480" y1="460" x2="480" y2="536" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+  <path d="M600,580 C690,580 760,520 830,464" fill="none" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+  <text x="668" y="400" font-size="13" fill="#455A64">mTLS</text>
+
+  <!-- in-cluster platform -->
+  <rect x="60" y="660" width="250" height="80" rx="10" fill="#FFF8E1" stroke="#F9A825" stroke-width="2"/>
+  <text x="185" y="694" text-anchor="middle" font-size="18" font-weight="bold" fill="#E65100">OTel Collector</text>
+  <text x="185" y="718" text-anchor="middle" font-size="13" fill="#455A64">trazas + métricas (OTLP)</text>
+  <rect x="330" y="660" width="250" height="80" rx="10" fill="#F3E5F5" stroke="#8E24AA" stroke-width="2"/>
+  <text x="455" y="694" text-anchor="middle" font-size="18" font-weight="bold" fill="#6A1B9A">aiops-detector</text>
+  <text x="455" y="718" text-anchor="middle" font-size="13" fill="#455A64">z-score 2σ + correlación, 15 s</text>
+  <rect x="600" y="660" width="250" height="80" rx="10" fill="#FFEBEE" stroke="#C62828" stroke-width="2"/>
+  <text x="725" y="694" text-anchor="middle" font-size="18" font-weight="bold" fill="#B71C1C">Chaos Mesh</text>
+  <text x="725" y="718" text-anchor="middle" font-size="13" fill="#455A64">NetworkChaos · fallas con TTL</text>
+  <rect x="870" y="660" width="240" height="80" rx="10" fill="#E0F2F1" stroke="#00796B" stroke-width="2"/>
+  <text x="990" y="690" text-anchor="middle" font-size="17" font-weight="bold" fill="#004D40">Seguridad E-W</text>
+  <text x="990" y="712" text-anchor="middle" font-size="13" fill="#455A64">NetworkPolicy + log eBPF</text>
+  <text x="990" y="730" text-anchor="middle" font-size="13" fill="#455A64">security-exporter</text>
+
+  <!-- Cloud SQL -->
+  <rect x="1180" y="370" width="380" height="100" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2.5"/>
+  <text x="1370" y="408" text-anchor="middle" font-size="20" font-weight="bold" fill="#0D47A1">Cloud SQL PostgreSQL 16</text>
+  <text x="1370" y="434" text-anchor="middle" font-size="14" fill="#455A64">Query Insights + sqlcommenter (trace_id)</text>
+  <line x1="1000" y1="420" x2="1176" y2="420" stroke="#1E88E5" stroke-width="3" marker-end="url(#b)"/>
+
+  <!-- Cloud Observability -->
+  <rect x="1180" y="90" width="380" height="250" rx="12" fill="#FFFDE7" stroke="#F9A825" stroke-width="2.5"/>
+  <text x="1370" y="122" text-anchor="middle" font-size="20" font-weight="bold" fill="#E65100">Google Cloud Observability</text>
+  <g font-size="15" fill="#263238">
+    <text x="1200" y="156">• Cloud Trace (trazas)</text>
+    <text x="1200" y="182">• Managed Service for Prometheus</text>
+    <text x="1200" y="208">• Cloud Logging (logs JSON + trace_id)</text>
+    <text x="1200" y="234">• Cloud Monitoring: 5 SLOs, 11 alertas,</text>
+    <text x="1218" y="256">dashboards, métricas L7 de Envoy</text>
+    <text x="1200" y="282">• VPC Flow Logs · Cloud NAT logs</text>
+    <text x="1200" y="308">• Artifact Analysis · GKE Security Posture</text>
+  </g>
+  <polyline points="185,740 185,782 1155,782 1155,240 1176,240" fill="none" stroke="#F9A825" stroke-width="3" stroke-dasharray="8 6" marker-end="url(#a)"/><text x="560" y="795" font-size="13" fill="#E65100">OTLP → Cloud Trace / Managed Prometheus</text>
+
+  <!-- Enricher -->
+  <rect x="1180" y="520" width="380" height="110" rx="12" fill="#F3E5F5" stroke="#8E24AA" stroke-width="2.5"/>
+  <text x="1370" y="554" text-anchor="middle" font-size="20" font-weight="bold" fill="#6A1B9A">alert-enricher (Cloud Run)</text>
+  <text x="1370" y="580" text-anchor="middle" font-size="14" fill="#455A64">trace_id + diagnóstico (red / origen del error)</text>
+  <text x="1370" y="604" text-anchor="middle" font-size="14" fill="#455A64">→ log enriquecido → correo</text>
+  <polyline points="1560,300 1585,300 1585,560 1564,560" fill="none" stroke="#8E24AA" stroke-width="3" marker-end="url(#a)"/><text x="1592" y="440" font-size="12" fill="#6A1B9A" transform="rotate(90 1592 440)" text-anchor="middle">alertas Cloud Monitoring</text>
+  <polyline points="455,740 455,772 1145,772 1145,590 1176,590" fill="none" stroke="#8E24AA" stroke-width="3" marker-end="url(#a)"/>
+  <rect x="1180" y="670" width="380" height="70" rx="10" fill="#ECEFF1" stroke="#607D8B" stroke-width="2"/>
+  <text x="1370" y="712" text-anchor="middle" font-size="19" font-weight="bold" fill="#263238">Correo con alerta accionable</text>
+  <line x1="1370" y1="630" x2="1370" y2="666" stroke="#37474F" stroke-width="3" marker-end="url(#a)"/>
+
+  <!-- Bottom strip -->
+  <rect x="30" y="800" width="1530" height="150" rx="12" fill="#FAFAFA" stroke="#B0BEC5" stroke-width="2"/>
+  <text x="50" y="834" font-size="19" font-weight="bold" fill="#263238">Infraestructura como código (Terraform) y CI de imágenes (Cloud Build → Artifact Registry)</text>
+  <g font-size="15" fill="#37474F">
+    <text x="50" y="866">VPC dedicada + subred con Flow Logs (5 s, 50 %) · Cloud NAT con logging · GKE privado (3 × e2-standard-2) · Cloud SQL · Artifact Registry</text>
+    <text x="50" y="892">IAM mínimo con Workload Identity · flota + Cloud Service Mesh gestionado · SLOs, alertas, métricas basadas en logs y dashboard como código</text>
+    <text x="50" y="918">Repositorio: github.com/davasquezbel/obs-lab-final (tag v1.0)</text>
+  </g>
+</svg>
