@@ -58,5 +58,5 @@ variable "slo_latency_threshold_s" {
 variable "enricher_image_tag" {
   description = "Tag de la imagen de alert-enricher (cambiarlo crea una nueva revisión de Cloud Run)"
   type        = string
-  default     = "1.0.1"
+  default     = "1.0.2"
 }

@@ -21,12 +21,17 @@ steps:
     name: gcr.io/cloud-builders/docker
     args: ["build", "-t", "${_REGISTRY}/alert-enricher:${_TAG}", "alert-enricher"]
     waitFor: ["-"]
+  - id: aiops-detector
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REGISTRY}/aiops-detector:${_TAG}", "aiops-detector"]
+    waitFor: ["-"]
 
 images:
   - ${_REGISTRY}/service-a:${_TAG}
   - ${_REGISTRY}/service-b:${_TAG}
   - ${_REGISTRY}/data-service:${_TAG}
   - ${_REGISTRY}/alert-enricher:${_TAG}
+  - ${_REGISTRY}/aiops-detector:${_TAG}
 
 options:
   logging: CLOUD_LOGGING_ONLY

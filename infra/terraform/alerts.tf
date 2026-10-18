@@ -183,7 +183,7 @@ resource "google_monitoring_alert_policy" "correlated" {
 resource "google_monitoring_alert_policy" "burn_rate" {
   display_name = "[AIOps] Burn rate alto — service-a disponibilidad"
   combiner     = "OR"
-  user_labels  = { alert_type = "aiops", severity = "critical" }
+  user_labels  = { alert_type = "aiops", severity = "critical", service = "service-a" }
 
   conditions {
     display_name = "burn rate (5 min) > 10x"
@@ -217,7 +217,7 @@ resource "google_monitoring_alert_policy" "enriched_email" {
         "resource.type=\"cloud_run_revision\"",
         "resource.labels.service_name=\"alert-enricher\"",
         "jsonPayload.event=\"alert.enriched\"",
-        "jsonPayload.policy_type=\"aiops\"",
+        "jsonPayload.policy_type=~\"^aiops\"",
       ])
       label_extractors = {
         policy    = "EXTRACT(jsonPayload.policy)"

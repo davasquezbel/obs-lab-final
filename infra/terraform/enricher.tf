@@ -69,3 +69,9 @@ resource "google_cloud_run_v2_service_iam_member" "enricher_public" {
 output "enricher_url" {
   value = google_cloud_run_v2_service.enricher.uri
 }
+
+output "enricher_webhook_url" {
+  description = "URL del webhook con token (la usa aiops-detector)"
+  value       = "${google_cloud_run_v2_service.enricher.uri}/alert?token=${random_password.webhook_token.result}"
+  sensitive   = true
+}

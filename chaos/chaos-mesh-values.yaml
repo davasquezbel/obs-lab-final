@@ -1,0 +1,23 @@
+# Valores de Helm para Chaos Mesh en GKE (containerd, cluster de laboratorio)
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+controllerManager:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+dashboard:
+  create: true
+  securityMode: false   # acceso solo vía kubectl port-forward (sandbox)
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+dnsServer:
+  create: false

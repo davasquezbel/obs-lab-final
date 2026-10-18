@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, StatusCode
 
+from common import faults
 from common.telemetry import Telemetry
 
 SERVICE = "data-service"
@@ -189,6 +190,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="data-service", version=os.getenv("APP_VERSION", "1.0.0"), lifespan=lifespan)
+faults.install(app, logger)   # antes de instrument(): los errores inyectados se miden como reales
 tel.instrument(app)
 
 

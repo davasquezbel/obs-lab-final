@@ -1,0 +1,63 @@
+# Detector AIOps en tiempo real (services/aiops-detector).
+# Secret requerido: aiops-detector (ENRICHER_URL) — lo crea scripts/deploy-aiops.sh
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aiops-detector
+  namespace: otel-lab
+  annotations:
+    iam.gke.io/gcp-service-account: aiops-detector@obs-lab-final.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-detector
+  namespace: otel-lab
+  labels:
+    app: aiops-detector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aiops-detector
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "96Mi"
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+      labels:
+        app: aiops-detector
+    spec:
+      serviceAccountName: aiops-detector
+      containers:
+        - name: aiops-detector
+          image: us-central1-docker.pkg.dev/obs-lab-final/obs-lab/aiops-detector:1.0.2
+          imagePullPolicy: Always
+          env:
+            - name: GOOGLE_CLOUD_PROJECT
+              value: obs-lab-final
+            - name: APP_NAMESPACE
+              value: otel-lab
+            - name: EVAL_INTERVAL_S
+              value: "15"
+            - name: FOR_S
+              value: "45"
+            - name: RESOLVE_S
+              value: "60"
+            - name: SLO_LATENCY_S
+              value: "0.3"
+            - name: ENRICHER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: aiops-detector
+                  key: ENRICHER_URL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false

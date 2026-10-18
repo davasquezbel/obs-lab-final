@@ -29,6 +29,9 @@ PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "obs-lab-final")
 NAMESPACE = os.getenv("APP_NAMESPACE", "otel-lab")
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "")
 SLOW_MS = float(os.getenv("SLOW_REQUEST_MS", "300"))
+# Ventana hacia atrás para buscar el request fallido/lento. Debe cubrir la latencia
+# de detección: una alerta puede abrirse minutos después de que terminó el impacto.
+LOOKBACK_MIN = int(os.getenv("EVIDENCE_LOOKBACK_MIN", "10"))
 
 app = FastAPI(title="alert-enricher")
 _credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
@@ -141,7 +144,7 @@ async def alert(request: Request, token: str = ""):
     metric_labels = (inc.get("metric") or {}).get("labels") or {}
     resource_labels = (inc.get("resource") or {}).get("labels") or {}
     service = (metric_labels.get("job") or metric_labels.get("destination_service_name")
-               or resource_labels.get("job") or resource_labels.get("service_name"))
+               or resource_labels.get("job") or user_labels.get("service"))
     started_at = _ts(inc.get("started_at"))
 
     common = {
@@ -163,9 +166,8 @@ async def alert(request: Request, token: str = ""):
     if inc.get("state") != "open":
         return {"status": "recorded"}
 
-    # Ventana de búsqueda: desde 2 min antes del inicio del incidente
     t0 = time.perf_counter()
-    entry = find_evidence_log(service, started_at - timedelta(minutes=2))
+    entry = find_evidence_log(service, started_at - timedelta(minutes=LOOKBACK_MIN))
     if not entry:
         log("WARNING", f"Sin evidencia de traza para {policy}", event="alert.enriched",
             trace_id=None, **common)

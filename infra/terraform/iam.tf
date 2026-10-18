@@ -28,6 +28,10 @@ locals {
       "roles/monitoring.metricWriter",
       "roles/logging.logWriter",
     ]
+    # Detector AIOps en tiempo real: consulta Managed Prometheus
+    "aiops-detector" = [
+      "roles/monitoring.viewer",
+    ]
     # El Auth Proxy (sidecar) exporta sus propias trazas y métricas
     "data-service" = [
       "roles/cloudsql.client",

@@ -27,6 +27,11 @@ if ! kubectl -n $NS get secret auth-users >/dev/null 2>&1; then
     --from-literal=LOGIN_PASS="$LOGIN_PASS"
 fi
 
+# Token para la inyección de fallas en proceso (common/faults.py)
+if ! kubectl -n $NS get secret chaos-token >/dev/null 2>&1; then
+  kubectl -n $NS create secret generic chaos-token --from-literal=CHAOS_TOKEN="$(openssl rand -hex 16)"
+fi
+
 echo "▶ OTel Collector, servicios y generador de tráfico"
 kubectl apply -f "$ROOT/k8s/10-otel-collector.yaml"
 kubectl apply -f "$ROOT/k8s/20-services.yaml"
