@@ -2,6 +2,7 @@
 
 **Integrantes:** Sergio Cobos, David Vasquez y Sebastián Bedoya Flórez  
 **Asignatura:** Observabilidad en Ambientes Productivos
+
 **Fecha:** `18 Octubre 2026`  
 
 Laboratorio integrador de **Observabilidad en Ambientes Productivos** (Maestría en Arquitectura de Software).
