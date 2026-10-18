@@ -17,11 +17,16 @@ steps:
     name: gcr.io/cloud-builders/docker
     args: ["build", "--build-arg", "SERVICE=data-service", "-t", "${_REGISTRY}/data-service:${_TAG}", "."]
     waitFor: ["-"]
+  - id: alert-enricher
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REGISTRY}/alert-enricher:${_TAG}", "alert-enricher"]
+    waitFor: ["-"]
 
 images:
   - ${_REGISTRY}/service-a:${_TAG}
   - ${_REGISTRY}/service-b:${_TAG}
   - ${_REGISTRY}/data-service:${_TAG}
+  - ${_REGISTRY}/alert-enricher:${_TAG}
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -43,3 +43,20 @@ variable "flow_logs_sampling" {
   type        = number
   default     = 0.5
 }
+
+variable "alert_email" {
+  description = "Correo que recibe las alertas AIOps enriquecidas"
+  type        = string
+}
+
+variable "slo_latency_threshold_s" {
+  description = "Umbral del SLO de latencia (p99)"
+  type        = number
+  default     = 0.3
+}
+
+variable "enricher_image_tag" {
+  description = "Tag de la imagen de alert-enricher (cambiarlo crea una nueva revisión de Cloud Run)"
+  type        = string
+  default     = "1.0.1"
+}
