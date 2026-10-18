@@ -1,5 +1,9 @@
 # obs-lab-final — Sistema observable de nivel producción en GCP
 
+**Integrantes:** Sergio Cobos, David Vasquez y Sebastián Bedoya Flórez  
+**Asignatura:** Observabilidad en Ambientes Productivos
+**Fecha:** `18 Octubre 2026`  
+
 Laboratorio integrador de **Observabilidad en Ambientes Productivos** (Maestría en Arquitectura de Software).
 Integra los tres pilares con OpenTelemetry, AIOps, observabilidad de red y seguridad, SRE (SLO /
 error budget) y Chaos Engineering sobre Google Cloud, todo desplegado con Terraform.
